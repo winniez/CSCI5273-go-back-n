@@ -10,7 +10,7 @@
 #include <string.h> /* memset() */
 #include <stdlib.h>
 #include <time.h>
-#include "sendto_h"
+#include "sendto_.h"
 #include "util.h"
 
 #define SERVER_SLEEP 10
@@ -18,6 +18,11 @@
 /*    argv[0]	argv[1]		argv[2]		argv[3]	argv[4]		argv[5]
  * ./GBNserver <server_port> <error_rate> <random_seed> <output_file> <receive_log> 
  * */
+int serverSleep = SERVER_SLEEP;
+int RWS =  6;
+int LFRead = 0;
+int LFRcvd = 0;
+
 
 /* timeout is required when calling resetRWS()
  * ACK can be lost and lead to deadlock
@@ -31,11 +36,7 @@ void resetRWS()
 }	
 
 
-int main(int argc, char *argv[]) {
-	int serverSleep = SERVER_SLEEP;
-	int RWS =  MAXPCKTBUFSIZE;
-	int LFRead = 0;
-	int LFRcvd = 0;
+int main(int argc, char *argv[]) {	
 	int LAF = RWS;
 	int upper_limit = LFRead +  MAXPCKTBUFSIZE;
 	int free_slots = upper_limit - LFRcvd;
@@ -49,14 +50,14 @@ int main(int argc, char *argv[]) {
 		printf("usage : %s <server_port> <error rate> <random seed> <send_file> <send_log> \n", argv[0]);
 		exit(1);
 	}
-	printf("error rate : %f\n",atof(argv[2]));
 
 	/* Note: you must initialize the network library first before calling sendto_().  The arguments are the <errorrate> and <random seed> */
 	init_net_lib(atof(argv[2]), atoi(argv[3]));
 	printf("error rate : %f\n",atof(argv[2]));
 
 	/* socket creation */
-	if((sd=socket(AF_INET, SOCK_DGRAM, 0))<0)
+	int sd;
+	if((sd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
 	{
 		printf("%s: cannot open socket \n",argv[0]);
 		exit(1);
@@ -68,33 +69,36 @@ int main(int argc, char *argv[]) {
 	servAddr.sin_family = AF_INET;                   //address family
 	servAddr.sin_port = htons(atoi(argv[1]));        //htons() sets the port # to network byte order
 	servAddr.sin_addr.s_addr = INADDR_ANY;           //supplies the IP address of the local machine
-	if(bind(sock, (struct sockaddr *)&servAddr, sizeof(servAddr)) <0)
+	if(bind(sd, (struct sockaddr *)&servAddr, sizeof(servAddr)) <0)
 	{
-		printf("%s: cannot to bind port number %d \n",argv[0], argv[1]);
+		printf("%s: cannot to bind port number %s \n",argv[0], argv[1]);
 		exit(1); 
 	}
 
 	/* Open log */
-	FILE * rcvlog = fopen(rcv_log_fn, "a");	// append trances to log
+	FILE * rcvlog = fopen(argv[5], "a");	// append trances to log
 
 	/* Receive message from client */
 	struct sockaddr_in cliAddr;
 	int cliLen = sizeof(cliAddr);
 	int nbytes;
+	
+	// initial shake, recv filename and filesize from client
 	char recvmsg[1024];
         bzero(recvmsg,sizeof(recvmsg));
         cliLen = sizeof(cliAddr);
-        nbytes = recvfrom(sd, &rcvmsg, sizeof (recvmsg), 0, (struct sockaddr *) &cliAddr, &cliLen);
+        nbytes = recvfrom(sd, &recvmsg, sizeof (recvmsg), 0, (struct sockaddr *) &cliAddr, &cliLen);
+	printf("Client says:\n %s \n", recvmsg);
 	
 	// parse file name and size
 	char fnamechar[256];
 	char fsizechar[32]; 
-	char* sec_arg = strstr(recvmsg, "\n");
-	strncpy(fnamechar, recvmsg, (sec_arg - recvmsg));
+	char* sec_arg = strstr(recvmsg, "\t");
+	// strncpy(fnamechar, recvmsg, (sec_arg - recvmsg));
       	strcpy(fsizechar, sec_arg+1);
 
 	// open file
-	FILE * recvfile = fopen(fnamechar, "wb");
+	FILE * recvfile = fopen(argv[4], "wb");
 	if (recvfile)
 	{
 		// send ack
@@ -102,8 +106,8 @@ int main(int argc, char *argv[]) {
 		ack.type = ACK_TYPE;
 		ack.seq = -1;
 		ack.rws = RWS;
-		nbytes = sendto(sd, ack, sizeof(ack), 0, (struct sockaddr*)&cliAddr, cliLen);
-
+		nbytes = sendto(sd, &ack, sizeof(ack), 0, (struct sockaddr*)&cliAddr, cliLen);
+		
 		// receiving file
 		
 	}
@@ -112,18 +116,9 @@ int main(int argc, char *argv[]) {
 		printf("Failed open file %s, please retry. \n", fnamechar);
 	}	
 
-	/*
-	char recvmsg[100];
-	bzero(recvmsg,sizeof(recvmsg));
-	cliLen = sizeof(cliAddr);
-	nbytes = recvfrom(sd, &rcvmsg, sizeof (recvmsg), 0, (struct sockaddr *) &cliAddr, &cliLen);
-	printf("Client says:\n %s \n", recvmsg);
-	*/
-	/* Respond using sendto_ in order to simulate dropped packets */
-	char response[] = "respond this";
-	nbytes = sendto_(sd, response, strlen(response),0, (struct sockaddr *) &cliAddr, sizeof(cliLen));
-	
 	// close log file
 	fclose(rcvlog);
+	// close socket
+	close(sd);
 }
 

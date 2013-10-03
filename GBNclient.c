@@ -30,7 +30,8 @@ int main(int argc, char *argv[]) {
 	int remote_len;
 	// buffer
 	packet packet_buffer[MAXPCKTBUFSIZE];	
-	ACK ack_buffer[MAXPCKTBUFSIZE];
+	// ACK ack_buffer[MAXPCKTBUFSIZE];
+	sendInfo departs[MAXPCKTBUFSIZE];
 
 	/* check command line args. */
 	if(argc<7)
@@ -70,24 +71,29 @@ int main(int argc, char *argv[]) {
 		// determine file size
 		int fsize;
 		char fsizechar[32];
-		fseek(fp, 0, SEEK_END); // seek to end of file
-		fsize = ftell(fp); // get current file pointer
-		fseek(fp, 0, SEEK_SET); // seek back to beginning of file
+		fseek(sendfile, 0, SEEK_END); // seek to end of file
+		fsize = ftell(sendfile); // get current file pointer
+		fseek(sendfile, 0, SEEK_SET); // seek back to beginning of file
 		sprintf(fsizechar, "%d", fsize);
 		printf("file size %s \n", fsizechar);
 
 		// send file size & hand shake
 		char msg[1024];
-		packet init_shake;
-		init_shake.type = DATA_TYPE;
-		strcpy(init_shake.data, argv[5]);
-		strcat(init_shake.data, "\t");
-		strcat(init_shake.data, fsizechar);
-		init_shake.size = sizeof(init_shake.data)/sizeof(char);
-		nbytes = sendto_(sd, msg, sizeof(msg), 0, (struct sockaddr*)&remoteServAddr, remote_len);
+		ACK tmpack;
+		strcpy(msg, argv[5]);
+		strcat(msg, "\t");
+		strcat(msg, fsizechar);
+		nbytes = sendto(sd, msg, sizeof(msg), 0, (struct sockaddr*)&remoteServAddr, remote_len);
 		// get ack
-		timeout_recv(sd, 	
-	
+		nbytes = timeout_recvfrom(sd, &tmpack, sizeof(ACK), (struct sockaddr*)&remoteServAddr);  	
+		// resend when timed out
+		while (!nbytes)
+		{
+			nbytes = sendto(sd, msg, sizeof(msg), 0, (struct sockaddr*)&remoteServAddr, remote_len);
+			// get ack
+			nbytes = timeout_recvfrom(sd, &tmpack, sizeof(ACK), (struct sockaddr*)&remoteServAddr);
+		}
+		
 		int seq = 0;
 		int remain = fsize;
 		while(remain >=0)
@@ -109,9 +115,4 @@ int main(int argc, char *argv[]) {
 	close(sd);
 	// close log file
 	fclose(sendlog);
-	/* Call sendto_ in order to simulate dropped packets 
-	int nbytes;
-	char msg[] = "send this";
-	nbytes = sendto_(sd,msg, strlen(msg),0, (struct sockaddr *) &remoteServAddr, sizeof(remoteServAddr));
-	*/
 }

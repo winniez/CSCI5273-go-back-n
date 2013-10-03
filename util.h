@@ -18,13 +18,11 @@
 // TIMEOUT 50 ms
 #define TIMEOUT 50 
 
-
-
 typedef struct {
         int type;
 	int seq;
         int size;
-        char data[MAXBUFSIZE];
+        char data[MAXDATABUFSIZE];
 } packet;
 
 typedef struct {
@@ -33,20 +31,21 @@ typedef struct {
         int rws;
 } ACK;
 
+typedef struct {
+	int seq;
+	time_t send_timestamp;
+} sendInfo;
 
-char* timestamp()
+void timestamp(char* timestr)
 {
 	time_t ltime; /* calendar time */
         ltime = time(NULL); /* get current cal time */
-	char timestr[32];
 	timestr = ctime(&ltime);
-	//timestr = asctime(localtime(&ltime));
-	return timestr;
+	// timestr = asctime(localtime(&ltime));
 }
 
-char* log_entry(int type, int seq, int freeSlot)
+void* log_entry(char* entry, int type, int seq, int freeSlot)
 {
-	char entry[512];
 	if (type == SEND)
 	{
 		strcpy(entry, "<Send> ");
@@ -59,22 +58,14 @@ char* log_entry(int type, int seq, int freeSlot)
 	{
 		strcpy(entry, "<Resend> ");
 	}	
-
-	return entry;
 }	
-
-
-void waitFor (unsigned int secs) {
-	retTime = time(0) + secs;     // Get finishing time.
-	while (time(0) < retTime);    // Loop until it arrives.
-}
 
 /*
  * timeout_recvfrom
  * return 1 for successfully received
  * return 0 for timeout
  */
-int timeout_recvfrom (int sock, char *buf, int *length, struct sockaddr_in *connection)
+int timeout_recvfrom (int sock, void *buf, int length, struct sockaddr *connection)
 {
 	fd_set socks;
 	// add socket into fd_set
@@ -85,7 +76,7 @@ int timeout_recvfrom (int sock, char *buf, int *length, struct sockaddr_in *conn
 	int connection_len = sizeof(connection);
 
 	if (select(sock + 1, &socks, NULL, NULL, &t) &&
-		recvfrom(sock, buf, *length, 0, (struct sockaddr *)connection, connection_len)>=0)
+		recvfrom(sock, buf, length, 0, (struct sockaddr *)connection, &connection_len)>=0)
 	        // received msg
 		return 1;
 	else
