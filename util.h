@@ -1,5 +1,11 @@
 #include <time.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/time.h>
 
 #define MAXDATABUFSIZE 1024
 #define MAXPCKTBUFSIZE 10
@@ -9,6 +15,10 @@
 #define SEND 2
 #define RECV 3
 #define RESEND 4
+// TIMEOUT 50 ms
+#define TIMEOUT 50 
+
+
 
 typedef struct {
         int type;
@@ -57,4 +67,28 @@ char* log_entry(int type, int seq, int freeSlot)
 void waitFor (unsigned int secs) {
 	retTime = time(0) + secs;     // Get finishing time.
 	while (time(0) < retTime);    // Loop until it arrives.
+}
+
+/*
+ * timeout_recvfrom
+ * return 1 for successfully received
+ * return 0 for timeout
+ */
+int timeout_recvfrom (int sock, char *buf, int *length, struct sockaddr_in *connection)
+{
+	fd_set socks;
+	// add socket into fd_set
+	FD_ZERO(&socks);
+	FD_SET(sock, &socks);
+	struct timeval t;
+	t.tv_usec = TIMEOUT;
+	int connection_len = sizeof(connection);
+
+	if (select(sock + 1, &socks, NULL, NULL, &t) &&
+		recvfrom(sock, buf, *length, 0, (struct sockaddr *)connection, connection_len)>=0)
+	        // received msg
+		return 1;
+	else
+		// timed out
+		return 0;
 }

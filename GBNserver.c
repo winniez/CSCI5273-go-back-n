@@ -1,6 +1,7 @@
 /* GBNserver.c */
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -96,6 +97,15 @@ int main(int argc, char *argv[]) {
 	FILE * recvfile = fopen(fnamechar, "wb");
 	if (recvfile)
 	{
+		// send ack
+		ACK ack;
+		ack.type = ACK_TYPE;
+		ack.seq = -1;
+		ack.rws = RWS;
+		nbytes = sendto(sd, ack, sizeof(ack), 0, (struct sockaddr*)&cliAddr, cliLen);
+
+		// receiving file
+		
 	}
 	else
 	{

@@ -1,6 +1,7 @@
 /* GBNclient.c */
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -28,8 +29,9 @@ int main(int argc, char *argv[]) {
 	int nbytes;
 	int remote_len;
 	// buffer
-	packet buffer[MAXPCKTBUFSIZE];	
-	
+	packet packet_buffer[MAXPCKTBUFSIZE];	
+	ACK ack_buffer[MAXPCKTBUFSIZE];
+
 	/* check command line args. */
 	if(argc<7)
 	{
@@ -82,10 +84,9 @@ int main(int argc, char *argv[]) {
 		strcat(init_shake.data, "\t");
 		strcat(init_shake.data, fsizechar);
 		init_shake.size = sizeof(init_shake.data)/sizeof(char);
-		nbytes = sendto(sd, msg, sizeof(msg), 0, (struct sockaddr*)&remoteServAddr, remote_len);
+		nbytes = sendto_(sd, msg, sizeof(msg), 0, (struct sockaddr*)&remoteServAddr, remote_len);
 		// get ack
-			
-		
+		timeout_recv(sd, 	
 	
 		int seq = 0;
 		int remain = fsize;
