@@ -86,6 +86,7 @@ void receiver_sleep()
  */
 int timeout_recvfrom (int sock, void *buf, int length, struct sockaddr *connection)
 {
+	// printf("in timeout_recvfrom\n");
 	fd_set socks;
 	// add socket into fd_set
 	FD_ZERO(&socks);
@@ -96,9 +97,15 @@ int timeout_recvfrom (int sock, void *buf, int length, struct sockaddr *connecti
 
 	if (select(sock + 1, &socks, NULL, NULL, &t) &&
 		recvfrom(sock, buf, length, 0, (struct sockaddr *)connection, &connection_len)>=0)
-	        // received msg
+	{        
+		// received msg
+		// printf("leaving timeout_recvfrom, return 1\n");
 		return 1;
+	}	
 	else
+	{	
 		// timed out
+		// printf("leaving timeout_recvfrom, return 0\n");
 		return 0;
+	}	
 }
