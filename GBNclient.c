@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
 		int readed, toread;
 		LAR = -1; 
 		LFS = -1;
-		while(remain >0)
+		while(LAR < total-1)
 		{
 			if (LFS < LAR + SWS)
 			{
@@ -160,7 +160,7 @@ int main(int argc, char *argv[]) {
 					}	
 					// s/r/rs seq [freeslot] LAR LFS time
 					strcpy(log_line, "Receive ");
-					sprintf(tmpstr, "%d ", seq);
+					sprintf(tmpstr, "%d ", tmpack.seq);
 					strcat(log_line, tmpstr);
 					sprintf(tmpstr, "%d ", tmpack.freeSlots);
 					strcat(log_line, tmpstr);
@@ -173,9 +173,33 @@ int main(int argc, char *argv[]) {
 					strcat(log_line, "\n");
 					printf("%s", log_line);
 					fwrite(log_line, sizeof(char), strlen(log_line), sendlog);
-
 				}
-				// check if there's timeout
+				else 
+				{// timed out, resend up to LFS
+					int o = LAR + 1;
+					int right_most = LFS < (LAR + SWS) ? LFS : (LAR + SWS);
+					for (o = LAR + 1; o <= right_most; o++)
+					{
+						printf("timed out, resend %d packet.\n", o);
+						buf_index = o % MAXPCKTBUFSIZE;
+						nbytes = sendto_(sd, &(packet_buffer[buf_index]), sizeof(packet),
+								0, (struct sockaddr*) &remoteServAddr, remote_len);
+						// resend log
+						strcpy(log_line, "Resend ");
+						sprintf(tmpstr, "%d ", packet_buffer[buf_index].seq);
+						strcat(log_line, tmpstr);
+						sprintf(tmpstr, "%d ", LAR);
+						strcat(log_line, tmpstr);
+						sprintf(tmpstr, "%d ", LFS);
+						strcat(log_line, tmpstr);
+						time(&tmptime);
+						strcat(log_line, ctime(&tmptime));
+						strcat(log_line, "\n");
+						fwrite(log_line, sizeof(char), strlen(log_line), sendlog);
+					}       	
+				}	
+				
+				/*
 				int k;
 				clock_gettime(CLOCK_MONOTONIC, &cur_time);
 				// time(&cur_time); 
@@ -209,7 +233,7 @@ int main(int argc, char *argv[]) {
 						}	
 						break;	
 					}	
-				}	
+				}*/	
 
 			}
 			if (SWS == 0)
@@ -217,13 +241,14 @@ int main(int argc, char *argv[]) {
 			 // probe if RWS has been reset 
 			 // and reset SWS
 			 // retrieve ack
+			 	printf("SWS = 0\n");
 			 	nbytes = timeout_recvfrom(sd, &tmpack, sizeof(ACK), (struct sockaddr*) &remoteServAddr);
 				if (nbytes) 
 				{
 
 					// s/r/rs seq [freeslot] LAR LFS time
 					strcpy(log_line, "Receive ");
-					sprintf(tmpstr, "%d ", seq);
+					sprintf(tmpstr, "%d ", tmpack.seq);
 					strcat(log_line, tmpstr);
 					sprintf(tmpstr, "%d ", tmpack.freeSlots);
 					strcat(log_line, tmpstr);
