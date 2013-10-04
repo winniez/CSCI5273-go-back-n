@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>   /* memset() */
@@ -21,13 +22,15 @@
  * ./GBNclient <server_ip_address> <server_port> <error_rate> <random_seed> <send_file> <send_log>
  */
 
+int SWS = 9;
+int LAR = 0;
+int LFS = 0;
+
 int main(int argc, char *argv[]) {
-	int SWS = 9;
-	int LAR = 0;
-	int LFS = 0;
 	int packet_size = sizeof(packet);
 	int nbytes;
 	int remote_len;
+	struct timespec cur_time;
 	// buffer
 	packet packet_buffer[MAXPCKTBUFSIZE];	
 	// ACK ack_buffer[MAXPCKTBUFSIZE];
@@ -86,25 +89,96 @@ int main(int argc, char *argv[]) {
 		nbytes = sendto(sd, msg, sizeof(msg), 0, (struct sockaddr*)&remoteServAddr, remote_len);
 		// get ack
 		nbytes = timeout_recvfrom(sd, &tmpack, sizeof(ACK), (struct sockaddr*)&remoteServAddr);  	
+		SWS = tmpack.rws;
 		// resend when timed out
 		while (!nbytes)
 		{
 			nbytes = sendto(sd, msg, sizeof(msg), 0, (struct sockaddr*)&remoteServAddr, remote_len);
 			// get ack
 			nbytes = timeout_recvfrom(sd, &tmpack, sizeof(ACK), (struct sockaddr*)&remoteServAddr);
+			// update SWS
+			SWS = tmpack.rws;
 		}
 		
 		int seq = 0;
+		int buf_index = seq % MAXDATABUFSIZE;
 		int remain = fsize;
-		while(remain >=0)
+		int total = fsize / MAXDATABUFSIZE;
+		if (fsize % MAXDATABUFSIZE) total += 1;
+		int readed, toread;
+		LAR = -1; 
+		LFS = -1;
+		while(remain >0)
 		{
-				
-			// update indexing
-			remain -= MAXDATABUFSIZE;
-			seq++;
-	
+			if (LFS <= LAR + SWS)
+			{
+				buf_index = seq % MAXDATABUFSIZE;
+				packet_buffer[buf_index].type = DATA_TYPE;
+				packet_buffer[buf_index].seq = seq;
+				toread = (MAXDATABUFSIZE) < (remain) ? (MAXDATABUFSIZE) : (remain);
+				packet_buffer[buf_index].size = toread;
+				readed = fread(packet_buffer[buf_index].data, sizeof(char), toread, sendfile);
+				nbytes = sendto_(sd, &(packet_buffer[buf_index]), sizeof(packet), 0, (struct sockaddr*) &remoteServAddr, remote_len);
+				// set timer
+				departs[buf_index].seq = seq;
+				clock_gettime(CLOCK_MONOTONIC, &(departs[buf_index].send_stamp));
+				//time(&(departs[buf_index].send_timestamp));
+				LFS++;
+				remain -= toread;
+				seq++;
+				buf_index = seq % MAXDATABUFSIZE;
+			}
+			else 
+			{
+				nbytes = timeout_recvfrom(sd, &tmpack, sizeof(ACK), (struct sockaddr*)&remoteServAddr); 
+				if (nbytes)
+				{// received
+					if (LAR == tmpack.seq) 
+					{//duplicate, resend 	
+						SWS = tmpack.rws;
+					}
+					if (LAR > tmpack.seq)
+					{// update LAR
+						LAR = tmpack.seq;
+						SWS = tmpack.rws;
+					}	
+				}
+				// check if there's timeout
+				int k;
+				clock_gettime(CLOCK_MONOTONIC, &cur_time);
+				// time(&cur_time); 
+				for (k=0; k<MAXPCKTBUFSIZE; k++)
+				{
+					if (difftime_ms(&cur_time, &(departs[k].send_stamp)) > 50)
+					{// resend
+						int o = 0;
+						int right_most = (LFS) < (LAR + SWS)? (LFS) : (LAR + SWS);
+						for (o = LAR + 1; o <= right_most; o++)
+						{
+							buf_index = o % MAXDATABUFSIZE;
+							nbytes = sendto_(sd, &(packet_buffer[buf_index]), sizeof(packet), 
+									0, (struct sockaddr*) &remoteServAddr, remote_len);
+							// set timer
+							clock_gettime(CLOCK_MONOTONIC, &departs[buf_index].send_stamp);
+						}	
+						break;	
+					}	
+				}	
+
+			}
+			if (SWS == 0)
+			{// solution to deadlock
+			 // probe if RWS has been reset 
+			 // and reset SWS
+			 // retrieve ack
+			 	nbytes = timeout_recvfrom(sd, &tmpack, sizeof(ACK), (struct sockaddr*) &remoteServAddr);
+				if (nbytes) 
+				{
+					SWS = (tmpack.rws) > 0 ? (tmpack.rws) : 0;
+				}	
+			}	
 		}	
-	
+		fclose(sendfile);	
 	}
 	else
 	{

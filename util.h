@@ -6,9 +6,10 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 #define MAXDATABUFSIZE 1024
-#define MAXPCKTBUFSIZE 10
+#define MAXPCKTBUFSIZE 9
 #define MAXATTEMPTS 10
 #define ACK_TYPE 0
 #define DATA_TYPE 1
@@ -17,6 +18,7 @@
 #define RESEND 4
 // TIMEOUT 50 ms
 #define TIMEOUT 50 
+#define SERVER_SLEEP 10
 
 typedef struct {
         int type;
@@ -33,7 +35,8 @@ typedef struct {
 
 typedef struct {
 	int seq;
-	time_t send_timestamp;
+	//time_t send_timestamp;
+	struct timespec send_stamp;
 } sendInfo;
 
 void timestamp(char* timestr)
@@ -43,6 +46,13 @@ void timestamp(char* timestr)
 	timestr = ctime(&ltime);
 	// timestr = asctime(localtime(&ltime));
 }
+
+int difftime_ms(struct timespec* end, struct timespec* start)
+{
+	int diff = (end->tv_sec - start->tv_sec) * 10^(3);
+	diff = diff + (end->tv_nsec - start->tv_nsec) * 10^(-6);
+	return diff;
+}	
 
 void* log_entry(char* entry, int type, int seq, int freeSlot)
 {
@@ -58,6 +68,12 @@ void* log_entry(char* entry, int type, int seq, int freeSlot)
 	{
 		strcpy(entry, "<Resend> ");
 	}	
+}	
+
+void receiver_sleep()
+{
+	useconds_t time_interval = SERVER_SLEEP;
+	usleep(time_interval);
 }	
 
 /*

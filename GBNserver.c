@@ -13,16 +13,13 @@
 #include "sendto_.h"
 #include "util.h"
 
-#define SERVER_SLEEP 10
-
 /*    argv[0]	argv[1]		argv[2]		argv[3]	argv[4]		argv[5]
  * ./GBNserver <server_port> <error_rate> <random_seed> <output_file> <receive_log> 
  * */
-int serverSleep = SERVER_SLEEP;
 int RWS =  6;
 int LFRead = 0;
 int LFRcvd = 0;
-
+int LAF = 6;
 
 /* timeout is required when calling resetRWS()
  * ACK can be lost and lead to deadlock
@@ -37,10 +34,10 @@ void resetRWS()
 
 
 int main(int argc, char *argv[]) {	
-	int LAF = RWS;
 	int upper_limit = LFRead +  MAXPCKTBUFSIZE;
 	int free_slots = upper_limit - LFRcvd;
 	RWS = free_slots;
+	LAF = LFRcvd + RWS;
 	
 	// buffer
 	packet buffer[MAXPCKTBUFSIZE];
@@ -93,10 +90,13 @@ int main(int argc, char *argv[]) {
 	// parse file name and size
 	char fnamechar[256];
 	char fsizechar[32]; 
+	int fsize;
 	char* sec_arg = strstr(recvmsg, "\t");
-	// strncpy(fnamechar, recvmsg, (sec_arg - recvmsg));
+	strncpy(fnamechar, recvmsg, (sec_arg - recvmsg));
       	strcpy(fsizechar, sec_arg+1);
-
+	fsize = atoi(fsizechar);
+	int total = fsize / MAXDATABUFSIZE;
+	if (fsize % MAXDATABUFSIZE) total += 1;
 	// open file
 	FILE * recvfile = fopen(argv[4], "wb");
 	if (recvfile)
@@ -110,6 +110,10 @@ int main(int argc, char *argv[]) {
 		
 		// receiving file
 		
+	
+	
+	
+	
 	}
 	else
 	{
