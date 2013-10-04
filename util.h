@@ -40,6 +40,8 @@ typedef struct {
 	struct timespec send_stamp;
 } sendInfo;
 
+
+
 void timestamp(char* timestr)
 {
 	time_t ltime; /* calendar time */

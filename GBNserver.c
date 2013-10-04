@@ -41,7 +41,7 @@ int main(int argc, char *argv[]) {
 	
 	// buffer
 	packet packet_buffer[MAXPCKTBUFSIZE];
-	
+	packet tmppacket;
 	/* check command line args. */
 	if(argc<6) {
 		printf("usage : %s <server_port> <error rate> <random seed> <send_file> <send_log> \n", argv[0]);
@@ -79,6 +79,7 @@ int main(int argc, char *argv[]) {
 	struct sockaddr_in cliAddr;
 	int cliLen = sizeof(cliAddr);
 	int nbytes;
+	int window_decreasing_flag = 0;
 	ACK tmpack;
 	// initial shake, recv filename and filesize from client
 	char recvmsg[1024];
@@ -105,22 +106,32 @@ int main(int argc, char *argv[]) {
 		tmpack.type = ACK_TYPE;
 		tmpack.seq = -1;
 		tmpack.rws = RWS;
-		nbytes = sendto(sd, &tmpack, sizeof(struct ACK), 0, (struct sockaddr*)&cliAddr, cliLen);
+		nbytes = sendto(sd, &tmpack, sizeof(ACK), 0, (struct sockaddr*)&cliAddr, cliLen);
 		
 		// receiving file
 		int seq = 0;
 		int buf_index;
-		LFRead = 0;
-		LFRcvd = 0;
-		LAF = RWS;
+		int skip_recv = 0;
+		LFRead = -1;
+		LFRcvd = -1;
+		LAF = RWS - 1;
 		while (seq < total)
 		{	
-			buf_index = seq % MAXDATABUFSIZE;
-			nbytes = timeout_recvfrom(sd, &(packet_buffer[buf_index]), sizeof(packet), (struct sockaddr*)&cliAddr);
+			if (!skip_recv)
+			{	
+				nbytes = timeout_recvfrom(sd, &(tmppacket), sizeof(packet), (struct sockaddr*)&cliAddr);
+			}
+			else
+			{
+				skip_recv = 0;
+			}	
 			if (nbytes)
 			{// received, check if out of order
-				if (packet_buffer[buf_index].seq == LFRcvd + 1)
-				{// arrive in order, update LFRcvd, send ACK, store in buffer,update LFRead
+				// force decrease receive window size
+				if (window_decreasing_flag) RWS--;
+				// arriave in order
+				if (tmppacket.seq == LFRcvd + 1)
+				{// update LFRcvd, send ACK, write file,update LFRead
 					// update window
 					LFRcvd++;
 					seq++;
@@ -133,32 +144,80 @@ int main(int argc, char *argv[]) {
 					tmpack.freeSlots = free_slots;
 					tmpack.rws = RWS;
 					// send ACK
-					nbytes = sendto_(sd, &tmpack, sizeof(struct ACK), 0, (struct sockaddr*)&cliAddr, cliLen);
+					nbytes = sendto_(sd, &tmpack, sizeof(ACK), 0, (struct sockaddr*)&cliAddr, cliLen);
 					// write file
-					fwrite((char*)&(packet_buffer[buf_index].data), sizeof(char), packet_buffer[buf_index].size, recvfile);
+					fwrite((char*)&(tmppacket.data), sizeof(char), tmppacket.size, recvfile);
 					// update LFRead
-					LFRead = LFRcvd; // equivalent to LFRread++;	
+					LFRead = tmppacket.seq ; // equivalent to LFRread++;	
+
+					// scan previous received out of order packets
+					int k = LFRcvd;
+					for(k = LFRcvd + 1; k < LFRcvd + 1 + MAXPCKTBUFSIZE; k++)
+					{
+						buf_index = k % MAXPCKTBUFSIZE;
+						if (packet_buffer[buf_index].seq == LFRcvd + 1)
+						{
+							// update window
+							LFRcvd++;
+							seq++;
+							upper_limit = LFRead +  MAXPCKTBUFSIZE;
+							free_slots = upper_limit - LFRcvd;
+							RWS = free_slots;
+							// construct ACK
+							tmpack.seq = LFRcvd;
+							tmpack.freeSlots = free_slots;
+							tmpack.rws = RWS;
+							// send ACK
+							nbytes = sendto_(sd, &tmpack, sizeof(ACK), 0, 
+									(struct sockaddr*)&cliAddr, cliLen);
+							// write file
+							fwrite((char*)&(packet_buffer[buf_index].data), sizeof(char), packet_buffer[buf_index].size, recvfile);
+							// update LFRead
+							LFRead = LFRcvd;
+						}	
+					}
 				}
-				if (packet_buffer[buf_index].seq > LFRcvd + 1)
+				if (tmppacket.seq > LFRcvd + 1)
 				{// arrive out of order, cache packet, send duplicate ACK
 				 // as we are sending a duplicate ACK, which is exactly the previous ACK sent
 				 // just update ack.rws would be enough
 				 	tmpack.rws = RWS;	
-					nbytes = sendto_(sd, &tmpack, sizeof(struct ACK), 0, (struct sockaddr*)&cliAddr, cliLen);
+					nbytes = sendto_(sd, &tmpack, sizeof(ACK), 0, (struct sockaddr*)&cliAddr, cliLen);
+					// buffer out of order packet received
+					buf_index = tmppacket.seq % MAXPCKTBUFSIZE;
+					packet_buffer[buf_index].seq = tmppacket.seq;
+					packet_buffer[buf_index].size = tmppacket.size;
+					packet_buffer[buf_index].type = tmppacket.type;
+					strcpy(packet_buffer[buf_index].data, tmppacket.data);
+					
 				}
-				if (packet_buffer[buf_index].seq <LFRcvd + 1)
+				if (tmppacket.seq < LFRcvd + 1)
 				{// packets alreadly received and buffered, discard
 					;
 				}	
 			}
-			// decrease rws 
-				
-			
-		}	
-	
-	
-	
-	
+			// decrease rws
+			if (seq == 30) window_decreasing_flag = 1;
+			// handle situation when RWS is 0
+			if (RWS == 0) 
+			{// RWS decreased to 0
+				if (window_decreasing_flag)
+				{// reset flag and sleep 10 ms	
+					window_decreasing_flag = 0;
+					receiver_sleep();
+					RWS = 6;
+					// send ACK
+					do
+					{	
+						tmpack.rws = RWS;
+						nbytes = sendto_(sd, &tmpack, sizeof(ACK), 0, (struct sockaddr*)&cliAddr, cliLen);
+						nbytes = timeout_recvfrom(sd, &tmppacket, sizeof(packet), (struct sockaddr*)&cliAddr);
+					}while(!nbytes);	
+					skip_recv = 1;
+				}
+			}	
+		}
+	fclose(recvfile);	
 	}
 	else
 	{
