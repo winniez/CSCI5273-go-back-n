@@ -31,6 +31,7 @@ typedef struct {
 	int type;
         int seq;
         int rws;
+	int freeSlots;
 } ACK;
 
 typedef struct {
