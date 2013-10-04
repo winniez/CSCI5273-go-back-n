@@ -119,6 +119,25 @@ int main(int argc, char *argv[]) {
 				packet_buffer[buf_index].size = toread;
 				readed = fread(packet_buffer[buf_index].data, sizeof(char), toread, sendfile);
 				nbytes = sendto_(sd, &(packet_buffer[buf_index]), sizeof(packet), 0, (struct sockaddr*) &remoteServAddr, remote_len);
+
+				// s/r/rs seq [freeslot] LAR LFS time
+				char send_line[500] = "Send ";
+				char tmp_send_line[500];
+				sprintf(tmp_send_line, "%d", seq);
+				strcat(send_line, tmp_send_line);
+				strcat(send_line, " ");
+				sprintf(tmp_send_line, "%d", LAR);
+				strcat(send_line, tmp_send_line);
+				strcat(send_line, " ");
+				sprintf(tmp_send_line, "%d", LFS);
+				strcat(send_line, tmp_send_line);
+				strcat(send_line, " ");
+				time_t ti;
+				time(&ti);
+				strcat(send_line, ctime(&ti));
+				strcat(send_line, "\n");
+				fwrite(send_line, strlen(send_line) * sizeof(char), 1, sendlog);
+
 				// set timer
 				departs[buf_index].seq = seq;
 				clock_gettime(CLOCK_MONOTONIC, &(departs[buf_index].send_stamp));
@@ -130,9 +149,32 @@ int main(int argc, char *argv[]) {
 			}
 			else 
 			{
-				nbytes = timeout_recvfrom(sd, &tmpack, sizeof(ACK), (struct sockaddr*)&remoteServAddr); 
+				nbytes = timeout_recvfrom(sd, &tmpack, sizeof(ACK), (struct sockaddr*)&remoteServAddr);
 				if (nbytes)
 				{// received
+
+					// s/r/rs seq [freeslot] LAR LFS time
+					char recv_line[500] = "Receive ";
+					char tmp_recv_line[500];
+					sprintf(tmp_recv_line, "%d", seq);
+					strcat(recv_line, tmp_recv_line);
+					strcat(recv_line, " ");
+					sprintf(tmp_recv_line, "%d", tmpack.freeSlots);
+					strcat(recv_line, tmp_recv_line);
+					strcat(recv_line, " ");
+					sprintf(tmp_recv_line, "%d", LAR);
+					strcat(recv_line, tmp_recv_line);
+					strcat(recv_line, " ");
+					sprintf(tmp_recv_line, "%d", LFS);
+					strcat(recv_line, tmp_recv_line);
+					strcat(recv_line, " ");
+					time_t ti;
+					time(&ti);
+					strcat(recv_line, ctime(&ti));
+					strcat(recv_line, "\n");
+					fwrite(recv_line, strlen(recv_line) * sizeof(char), 1, sendlog);
+
+
 					if (LAR == tmpack.seq) 
 					{//duplicate, resend 	
 						SWS = tmpack.rws;
@@ -158,6 +200,25 @@ int main(int argc, char *argv[]) {
 							buf_index = o % MAXDATABUFSIZE;
 							nbytes = sendto_(sd, &(packet_buffer[buf_index]), sizeof(packet), 
 									0, (struct sockaddr*) &remoteServAddr, remote_len);
+
+							// s/r/rs seq [freeslot] LAR LFS time
+							char resend_line[500] = "Resend ";
+							char tmp_resend_line[500];
+							sprintf(tmp_resend_line, "%d", seq);
+							strcat(resend_line, tmp_resend_line);
+							strcat(resend_line, " ");
+							sprintf(tmp_resend_line, "%d", LAR);
+							strcat(resend_line, tmp_resend_line);
+							strcat(resend_line, " ");
+							sprintf(tmp_resend_line, "%d", LFS);
+							strcat(resend_line, tmp_resend_line);
+							strcat(resend_line, " ");
+							time_t ti;
+							time(&ti);
+							strcat(resend_line, ctime(&ti));
+							strcat(resend_line, "\n");
+							fwrite(resend_line, strlen(resend_line) * sizeof(char), 1, sendlog);
+
 							// set timer
 							clock_gettime(CLOCK_MONOTONIC, &departs[buf_index].send_stamp);
 						}	
@@ -174,6 +235,28 @@ int main(int argc, char *argv[]) {
 			 	nbytes = timeout_recvfrom(sd, &tmpack, sizeof(ACK), (struct sockaddr*) &remoteServAddr);
 				if (nbytes) 
 				{
+
+					// s/r/rs seq [freeslot] LAR LFS time
+					char recv_line[500] = "Receive ";
+					char tmp_recv_line[500];
+					sprintf(tmp_recv_line, "%d", seq);
+					strcat(recv_line, tmp_recv_line);
+					strcat(recv_line, " ");
+					sprintf(tmp_recv_line, "%d", tmpack.freeSlots);
+					strcat(recv_line, tmp_recv_line);
+					strcat(recv_line, " ");
+					sprintf(tmp_recv_line, "%d", LAR);
+					strcat(recv_line, tmp_recv_line);
+					strcat(recv_line, " ");
+					sprintf(tmp_recv_line, "%d", LFS);
+					strcat(recv_line, tmp_recv_line);
+					strcat(recv_line, " ");
+					time_t ti;
+					time(&ti);
+					strcat(recv_line, ctime(&ti));
+					strcat(recv_line, "\n");
+					fwrite(recv_line, strlen(recv_line) * sizeof(char), 1, sendlog);
+
 					SWS = (tmpack.rws) > 0 ? (tmpack.rws) : 0;
 				}	
 			}	
