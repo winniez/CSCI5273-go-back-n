@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
 	LAF = LFRcvd + RWS;
 	
 	// buffer
-	packet buffer[MAXPCKTBUFSIZE];
+	packet packet_buffer[MAXPCKTBUFSIZE];
 	
 	/* check command line args. */
 	if(argc<6) {
@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
 	struct sockaddr_in cliAddr;
 	int cliLen = sizeof(cliAddr);
 	int nbytes;
-	
+	ACK tmpack;
 	// initial shake, recv filename and filesize from client
 	char recvmsg[1024];
         bzero(recvmsg,sizeof(recvmsg));
@@ -102,14 +102,59 @@ int main(int argc, char *argv[]) {
 	if (recvfile)
 	{
 		// send ack
-		ACK ack;
-		ack.type = ACK_TYPE;
-		ack.seq = -1;
-		ack.rws = RWS;
-		nbytes = sendto(sd, &ack, sizeof(ack), 0, (struct sockaddr*)&cliAddr, cliLen);
+		tmpack.type = ACK_TYPE;
+		tmpack.seq = -1;
+		tmpack.rws = RWS;
+		nbytes = sendto(sd, &tmpack, sizeof(struct ACK), 0, (struct sockaddr*)&cliAddr, cliLen);
 		
 		// receiving file
-		
+		int seq = 0;
+		int buf_index;
+		LFRead = 0;
+		LFRcvd = 0;
+		LAF = RWS;
+		while (seq < total)
+		{	
+			buf_index = seq % MAXDATABUFSIZE;
+			nbytes = timeout_recvfrom(sd, &(packet_buffer[buf_index]), sizeof(packet), (struct sockaddr*)&cliAddr);
+			if (nbytes)
+			{// received, check if out of order
+				if (packet_buffer[buf_index].seq == LFRcvd + 1)
+				{// arrive in order, update LFRcvd, send ACK, store in buffer,update LFRead
+					// update window
+					LFRcvd++;
+					seq++;
+					upper_limit = LFRead +  MAXPCKTBUFSIZE;
+					free_slots = upper_limit - LFRcvd;
+					RWS = free_slots;
+					LAF = LFRcvd + RWS;
+					// construct ACK
+					tmpack.seq = LFRcvd;
+					tmpack.freeSlots = free_slots;
+					tmpack.rws = RWS;
+					// send ACK
+					nbytes = sendto_(sd, &tmpack, sizeof(struct ACK), 0, (struct sockaddr*)&cliAddr, cliLen);
+					// write file
+					fwrite((char*)&(packet_buffer[buf_index].data), sizeof(char), packet_buffer[buf_index].size, recvfile);
+					// update LFRead
+					LFRead = LFRcvd; // equivalent to LFRread++;	
+				}
+				if (packet_buffer[buf_index].seq > LFRcvd + 1)
+				{// arrive out of order, cache packet, send duplicate ACK
+				 // as we are sending a duplicate ACK, which is exactly the previous ACK sent
+				 // just update ack.rws would be enough
+				 	tmpack.rws = RWS;	
+					nbytes = sendto_(sd, &tmpack, sizeof(struct ACK), 0, (struct sockaddr*)&cliAddr, cliLen);
+				}
+				if (packet_buffer[buf_index].seq <LFRcvd + 1)
+				{// packets alreadly received and buffered, discard
+					;
+				}	
+			}
+			// decrease rws 
+				
+			
+		}	
 	
 	
 	
