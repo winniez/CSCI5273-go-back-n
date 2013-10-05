@@ -21,24 +21,12 @@ int LFRead = 0;
 int LFRcvd = 0;
 int LAF = 6;
 
-/* timeout is required when calling resetRWS()
- * ACK can be lost and lead to deadlock
- * slides Chapter2.3 page24
- */
-void resetRWS()
-{
-	RWS = 6;
-	// resend ACK
-	
-}	
-
-
 int main(int argc, char *argv[]) {	
 	int upper_limit = LFRead +  MAXPCKTBUFSIZE;
 	int free_slots = upper_limit - LFRcvd;
 	RWS = free_slots;
 	LAF = LFRcvd + RWS;
-
+	int recv_cnt = 0;
 	char log_line[1024];
 	char tmpstr[256];
 	time_t tmptime;
@@ -119,7 +107,7 @@ int main(int argc, char *argv[]) {
 		LFRead = -1;
 		LFRcvd = -1;
 		LAF = RWS - 1;
-		while (seq < total)
+		while (LFRcvd < total - 1)
 		{	
 			if (!skip_recv)
 			{	
@@ -131,17 +119,23 @@ int main(int argc, char *argv[]) {
 			}	
 			if (nbytes)
 			{// received, check if out of order
+				recv_cnt++;
 				// force decrease receive window size
-				if (window_decreasing_flag) RWS--;
+				if (recv_cnt >= 30 && recv_cnt <=39 ) 
+				{
+					RWS--;
+					if (RWS < 0) {RWS = 0;}
+				}
 				// arriave in order
 				if (tmppacket.seq == LFRcvd + 1)
 				{// update LFRcvd, send ACK, write file,update LFRead
 					// update window
 					LFRcvd++;
 					seq++;
-					upper_limit = LFRead +  MAXPCKTBUFSIZE;
+					upper_limit = LFRead +  RWS + 1;
 					free_slots = upper_limit - LFRcvd;
-					RWS = free_slots;
+					// if (window_decreasing_flag == 0)
+					// { RWS = free_slots; }
 					LAF = LFRcvd + RWS;
 					// construct ACK
 					tmpack.seq = LFRcvd;
@@ -149,18 +143,18 @@ int main(int argc, char *argv[]) {
 					tmpack.rws = RWS;
 
 					// s/r/rs seq [freeslot] LFRead LFRcvd LAF time
-					strcpy(log_line, "Receive ");
-					sprintf(tmpstr, "%d ", seq);
+					strcpy(log_line, "Receive\t");
+					sprintf(tmpstr, "%d\t\t", tmppacket.seq);
 					strcat(log_line, tmpstr);
-					sprintf(tmpstr, "%d ", LFRead);
+					sprintf(tmpstr, "%d\t", LFRead);
 					strcat(log_line, tmpstr);
-					sprintf(tmpstr, "%d ", LFRcvd);
+					sprintf(tmpstr, "%d\t", LFRcvd);
 					strcat(log_line, tmpstr);
-					sprintf(log_line, "%d ", LAF);
+					sprintf(tmpstr, "%d\t", LAF);
 					strcat(log_line, tmpstr);
 					time(&tmptime);
 					strcat(log_line, ctime(&tmptime));
-					strcat(log_line, "\n");
+					// strcat(log_line, "\n");
 					fwrite(log_line, sizeof(char), strlen(log_line), rcvlog);
 					printf("%s", log_line);
 
@@ -168,20 +162,20 @@ int main(int argc, char *argv[]) {
 					nbytes = sendto_(sd, &tmpack, sizeof(ACK), 0, (struct sockaddr*)&cliAddr, cliLen);
 
 					// s/r/rs seq [freeslot] LFRead LFRcvd LAF time
-					strcpy(log_line, "Send ");
-					sprintf(tmpstr, "%d ", seq);
+					strcpy(log_line, "Send\t");
+					sprintf(tmpstr, "%d\t", tmpack.seq);
 					strcat(log_line, tmpstr);
-					sprintf(log_line, "%d ", free_slots);
+					sprintf(tmpstr, "%d\t", free_slots);
 					strcat(log_line, tmpstr);
-					sprintf(tmpstr, "%d ", LFRead);
+					sprintf(tmpstr, "%d\t", LFRead);
 					strcat(log_line, tmpstr);
-					sprintf(tmpstr, "%d ", LFRcvd);
+					sprintf(tmpstr, "%d\t", LFRcvd);
 					strcat(log_line, tmpstr);
-					sprintf(log_line, "%d ", LAF);
+					sprintf(tmpstr, "%d\t", LAF);
 					strcat(log_line, tmpstr);
 					time(&tmptime);
 					strcat(log_line, ctime(&tmptime));
-					strcat(log_line, "\n");
+					//strcat(log_line, "\n");
 					fwrite(log_line, sizeof(char), strlen(log_line), rcvlog);
 					printf("%s", log_line);
 
@@ -200,9 +194,10 @@ int main(int argc, char *argv[]) {
 							// update window
 							LFRcvd++;
 							seq++;
-							upper_limit = LFRead +  MAXPCKTBUFSIZE;
+							upper_limit = LFRead +  RWS + 1;
 							free_slots = upper_limit - LFRcvd;
-							RWS = free_slots;
+							//if (window_decreasing_flag == 0)
+							//{ RWS = free_slots;}
 							// construct ACK
 							tmpack.seq = LFRcvd;
 							tmpack.freeSlots = free_slots;
@@ -212,20 +207,20 @@ int main(int argc, char *argv[]) {
 									(struct sockaddr*)&cliAddr, cliLen);
 
 							// s/r/rs seq [freeslot] LFRead LFRcvd LAF time
-							strcpy(log_line, "Send ");
-							sprintf(tmpstr, "%d ", seq);
+							strcpy(log_line, "Send\t");
+							sprintf(tmpstr, "%d\t", tmpack.seq);
 							strcat(log_line, tmpstr);
-							sprintf(log_line, "%d ", free_slots);
+							sprintf(tmpstr, "%d\t", free_slots);
 							strcat(log_line, tmpstr);
-							sprintf(tmpstr, "%d ", LFRead);
+							sprintf(tmpstr, "%d\t", LFRead);
 							strcat(log_line, tmpstr);
-							sprintf(tmpstr, "%d ", LFRcvd);
+							sprintf(tmpstr, "%d\t", LFRcvd);
 							strcat(log_line, tmpstr);
-							sprintf(log_line, "%d ", LAF);
+							sprintf(tmpstr, "%d\t", LAF);
 							strcat(log_line, tmpstr);
 							time(&tmptime);
 							strcat(log_line, ctime(&tmptime));
-							strcat(log_line, "\n");
+							// strcat(log_line, "\n");
 							fwrite(log_line, sizeof(char), strlen(log_line), rcvlog);
 							printf("%s", log_line);
 
@@ -243,21 +238,38 @@ int main(int argc, char *argv[]) {
 				 	tmpack.rws = RWS;	
 					nbytes = sendto_(sd, &tmpack, sizeof(ACK), 0, (struct sockaddr*)&cliAddr, cliLen);
 
-					// s/r/rs seq [freeslot] LFRead LFRcvd LAF time
-					strcpy(log_line, "Send ");
-					sprintf(tmpstr, "%d ", seq);
+					// receive log
+					strcpy(log_line, "Receive\t");
+					sprintf(tmpstr, "%d\t\t", tmppacket.seq);
 					strcat(log_line, tmpstr);
-					sprintf(log_line, "%d ", free_slots);
+					sprintf(tmpstr, "%d\t", LFRead);
 					strcat(log_line, tmpstr);
-					sprintf(tmpstr, "%d ", LFRead);
+					sprintf(tmpstr, "%d\t", LFRcvd);
 					strcat(log_line, tmpstr);
-					sprintf(tmpstr, "%d ", LFRcvd);
-					strcat(log_line, tmpstr);
-					sprintf(log_line, "%d ", LAF);
+					sprintf(tmpstr, "%d\t", LAF);
 					strcat(log_line, tmpstr);
 					time(&tmptime);
 					strcat(log_line, ctime(&tmptime));
-					strcat(log_line, "\n");
+					// strcat(log_line, "\n");
+					fwrite(log_line, sizeof(char), strlen(log_line), rcvlog);
+					printf("%s", log_line);
+					
+					// send duplicate ACK log
+					// s/r/rs seq [freeslot] LFRead LFRcvd LAF time
+					strcpy(log_line, "Send\t");
+					sprintf(tmpstr, "%d\t", tmpack.seq);
+					strcat(log_line, tmpstr);
+					sprintf(tmpstr, "%d\t", free_slots);
+					strcat(log_line, tmpstr);
+					sprintf(tmpstr, "%d\t", LFRead);
+					strcat(log_line, tmpstr);
+					sprintf(tmpstr, "%d\t", LFRcvd);
+					strcat(log_line, tmpstr);
+					sprintf(tmpstr, "%d\t", LAF);
+					strcat(log_line, tmpstr);
+					time(&tmptime);
+					strcat(log_line, ctime(&tmptime));
+					//strcat(log_line, "\n");
 					fwrite(log_line, sizeof(char), strlen(log_line), rcvlog);
 					printf("%s", log_line);
 
@@ -275,14 +287,17 @@ int main(int argc, char *argv[]) {
 				}	
 			}
 			// decrease rws
-			if (seq == 30) window_decreasing_flag = 1;
+			// if (recv_cnt == 30) window_decreasing_flag = 1;
 			// handle situation when RWS is 0
 			if (RWS == 0) 
 			{// RWS decreased to 0
 				printf("RWS = 0!!!!!\n");
-				if (window_decreasing_flag)
+				strcpy(log_line, "RWS = 0!!!!!!!!!!\n");
+				fwrite(log_line, sizeof(char), strlen(log_line), rcvlog);
+				printf("window_decreasing_flag = %d\n", window_decreasing_flag);
+				if (1)
 				{// reset flag and sleep 10 ms	
-					window_decreasing_flag = 0;
+					// window_decreasing_flag = 0;
 					receiver_sleep();
 					RWS = 6;
 					// send ACK
@@ -292,42 +307,27 @@ int main(int argc, char *argv[]) {
 						nbytes = sendto_(sd, &tmpack, sizeof(ACK), 0, (struct sockaddr*)&cliAddr, cliLen);
 
 						// s/r/rs seq [freeslot] LFRead LFRcvd LAF time
-						strcpy(log_line, "Send ");
-						sprintf(tmpstr, "%d ", seq);
+						strcpy(log_line, "Send\t");
+						sprintf(tmpstr, "%d\t", seq);
 						strcat(log_line, tmpstr);
-						sprintf(log_line, "%d ", free_slots);
+						sprintf(tmpstr, "%d\t", free_slots);
 						strcat(log_line, tmpstr);
-						sprintf(tmpstr, "%d ", LFRead);
+						sprintf(tmpstr, "%d\t", LFRead);
 						strcat(log_line, tmpstr);
-						sprintf(tmpstr, "%d ", LFRcvd);
+						sprintf(tmpstr, "%d\t", LFRcvd);
 						strcat(log_line, tmpstr);
-						sprintf(log_line, "%d ", LAF);
+						sprintf(tmpstr, "%d\t", LAF);
 						strcat(log_line, tmpstr);
 						time(&tmptime);
 						strcat(log_line, ctime(&tmptime));
-						strcat(log_line, "\n");
+						//strcat(log_line, "\n");
 						fwrite(log_line, sizeof(char), strlen(log_line), rcvlog);
 						printf("%s", log_line);
 
 						nbytes = timeout_recvfrom(sd, &tmppacket, sizeof(packet), (struct sockaddr*)&cliAddr);
 
-						// s/r/rs seq [freeslot] LFRead LFRcvd LAF time
-						strcpy(log_line, "Receive ");
-						sprintf(tmpstr, "%d ", seq);
-						strcat(log_line, tmpstr);
-						sprintf(tmpstr, "%d ", LFRead);
-						strcat(log_line, tmpstr);
-						sprintf(tmpstr, "%d ", LFRcvd);
-						strcat(log_line, tmpstr);
-						sprintf(log_line, "%d ", LAF);
-						strcat(log_line, tmpstr);
-						time(&tmptime);
-						strcat(log_line, ctime(&tmptime));
-						strcat(log_line, "\n");
-						fwrite(log_line, sizeof(char), strlen(log_line), rcvlog);
-						printf("%s", log_line);
-
-					}while(!nbytes);	
+					}while(!nbytes);
+					window_decreasing_flag = 0;	
 					skip_recv = 1;
 				}
 			}	

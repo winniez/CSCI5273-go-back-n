@@ -34,13 +34,6 @@ typedef struct {
 	int freeSlots;
 } ACK;
 
-typedef struct {
-	int seq;
-	//time_t send_timestamp;
-	struct timespec send_stamp;
-} sendInfo;
-
-
 
 void timestamp(char* timestr)
 {
@@ -55,22 +48,6 @@ int difftime_ms(struct timespec* end, struct timespec* start)
 	int diff = (end->tv_sec - start->tv_sec) * 10^(3);
 	diff = diff + (end->tv_nsec - start->tv_nsec) * 10^(-6);
 	return diff;
-}	
-
-void* log_entry(char* entry, int type, int seq, int freeSlot)
-{
-	if (type == SEND)
-	{
-		strcpy(entry, "<Send> ");
-	}
-	if (type == RECV)
-	{
-		strcpy(entry, "<Receive> ");
-	}
-	if (type == RESEND)
-	{
-		strcpy(entry, "<Resend> ");
-	}	
 }	
 
 void receiver_sleep()

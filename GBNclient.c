@@ -34,10 +34,12 @@ int main(int argc, char *argv[]) {
 	// buffer
 	packet packet_buffer[MAXPCKTBUFSIZE];	
 	// ACK ack_buffer[MAXPCKTBUFSIZE];
-	sendInfo departs[MAXPCKTBUFSIZE];
 	char log_line[1024];
 	char tmpstr[256];
 	time_t tmptime;
+	int resend_cnt[MAXPCKTBUFSIZE];
+	memset(resend_cnt, 0, sizeof(resend_cnt));
+
 	/* check command line args. */
 	if(argc<7)
 	{
@@ -110,6 +112,7 @@ int main(int argc, char *argv[]) {
 		int readed, toread;
 		LAR = -1; 
 		LFS = -1;
+		int last_frame_cnt = 0;
 		while(LAR < total-1)
 		{
 			if (LFS < LAR + SWS)
@@ -123,23 +126,18 @@ int main(int argc, char *argv[]) {
 				nbytes = sendto_(sd, &(packet_buffer[buf_index]), sizeof(packet), 0, (struct sockaddr*) &remoteServAddr, remote_len);
 
 				// s/r/rs seq [freeslot] LAR LFS time
-				strcpy(log_line, "Send ");
-			        sprintf(tmpstr, "%d ", seq);
+				strcpy(log_line, "Send\t");
+			        sprintf(tmpstr, "%d\t\t", seq);
 				strcat(log_line, tmpstr);
-				sprintf(tmpstr, "%d ", LAR);
+				sprintf(tmpstr, "%d\t", LAR);
 				strcat(log_line, tmpstr);
-				sprintf(tmpstr, "%d ", LFS);
+				sprintf(tmpstr, "%d\t", LFS);
 				strcat(log_line, tmpstr);
 				time(&tmptime);
 				strcat(log_line, ctime(&tmptime));
-				strcat(log_line, "\n");
+				// strcat(log_line, "\n");
 				fwrite(log_line, sizeof(char), strlen(log_line), sendlog);
 				printf("%s", log_line);
-				//printf("seq: %d, LAR: %d, LFS: %d, SWS: %d. \n", seq, LAR, LFS, SWS);
-				// set timer
-				departs[buf_index].seq = seq;
-				clock_gettime(CLOCK_MONOTONIC, &(departs[buf_index].send_stamp));
-				// time(&(departs[buf_index].send_timestamp));
 				LFS++; seq++; remain -= toread;
 			}
 			else 
@@ -159,82 +157,52 @@ int main(int argc, char *argv[]) {
 						SWS = tmpack.rws;
 					}	
 					// s/r/rs seq [freeslot] LAR LFS time
-					strcpy(log_line, "Receive ");
-					sprintf(tmpstr, "%d ", tmpack.seq);
+					strcpy(log_line, "Receive\t");
+					sprintf(tmpstr, "%d\t", tmpack.seq);
 					strcat(log_line, tmpstr);
-					sprintf(tmpstr, "%d ", tmpack.freeSlots);
+					sprintf(tmpstr, "%d\t", tmpack.freeSlots);
 					strcat(log_line, tmpstr);
-					sprintf(tmpstr, "%d ", LAR);
+					sprintf(tmpstr, "%d\t", LAR);
 					strcat(log_line, tmpstr);
-					sprintf(tmpstr, "%d ", LFS);
+					sprintf(tmpstr, "%d\t", LFS);
 					strcat(log_line, tmpstr);
 					time(&tmptime);
 					strcat(log_line, ctime(&tmptime));
-					strcat(log_line, "\n");
+					//strcat(log_line, "\n");
 					printf("%s", log_line);
 					fwrite(log_line, sizeof(char), strlen(log_line), sendlog);
 				}
 				else 
 				{// timed out, resend up to LFS
+					if (LAR >= total - MAXPCKTBUFSIZE  )
+					{
+						resend_cnt[LAR - total + MAXPCKTBUFSIZE]++;
+						if (resend_cnt[LAR - total + MAXPCKTBUFSIZE] >= 10) break;
+					}
 					int o = LAR + 1;
 					int right_most = LFS < (LAR + SWS) ? LFS : (LAR + SWS);
 					for (o = LAR + 1; o <= right_most; o++)
 					{
-						printf("timed out, resend %d packet.\n", o);
+						// printf("timed out, resend %d packet.\n", o);
 						buf_index = o % MAXPCKTBUFSIZE;
 						nbytes = sendto_(sd, &(packet_buffer[buf_index]), sizeof(packet),
 								0, (struct sockaddr*) &remoteServAddr, remote_len);
 						// resend log
-						strcpy(log_line, "Resend ");
-						sprintf(tmpstr, "%d ", packet_buffer[buf_index].seq);
+						strcpy(log_line, "Resend\t");
+						sprintf(tmpstr, "%d\t\t", packet_buffer[buf_index].seq);
 						strcat(log_line, tmpstr);
-						sprintf(tmpstr, "%d ", LAR);
+						sprintf(tmpstr, "%d\t", LAR);
 						strcat(log_line, tmpstr);
-						sprintf(tmpstr, "%d ", LFS);
+						sprintf(tmpstr, "%d\t", LFS);
 						strcat(log_line, tmpstr);
 						time(&tmptime);
 						strcat(log_line, ctime(&tmptime));
-						strcat(log_line, "\n");
+						//strcat(log_line, "\n");
 						fwrite(log_line, sizeof(char), strlen(log_line), sendlog);
+						printf("%s", log_line);
 					}       	
 				}	
 				
-				/*
-				int k;
-				clock_gettime(CLOCK_MONOTONIC, &cur_time);
-				// time(&cur_time); 
-				for (k=0; k<MAXPCKTBUFSIZE; k++)
-				{
-					if (difftime_ms(&cur_time, &(departs[k].send_stamp)) > 50)
-					{// resend
-						int o = 0;
-						int right_most = (LFS) < (LAR + SWS)? (LFS) : (LAR + SWS);
-						for (o = LAR + 1; o <= right_most; o++)
-						{
-							buf_index = o % MAXDATABUFSIZE;
-							nbytes = sendto_(sd, &(packet_buffer[buf_index]), sizeof(packet), 
-									0, (struct sockaddr*) &remoteServAddr, remote_len);
-
-							// s/r/rs seq [freeslot] LAR LFS time
-							strcpy(log_line, "Resend ");
-							sprintf(tmpstr, "%d ", seq);
-							strcat(log_line, tmpstr);
-							sprintf(tmpstr, "%d ", LAR);
-							strcat(log_line, tmpstr);
-							sprintf(tmpstr, "%d ", LFS);
-							strcat(log_line, tmpstr);
-							time(&tmptime);
-							strcat(log_line, ctime(&tmptime));
-							strcat(log_line, "\n");
-							fwrite(log_line, sizeof(char), strlen(log_line), sendlog);
-
-							// set timer
-							clock_gettime(CLOCK_MONOTONIC, &departs[buf_index].send_stamp);
-						}	
-						break;	
-					}	
-				}*/	
-
 			}
 			if (SWS == 0)
 			{// solution to deadlock
@@ -242,28 +210,31 @@ int main(int argc, char *argv[]) {
 			 // and reset SWS
 			 // retrieve ack
 			 	printf("SWS = 0\n");
+				strcpy(log_line, "SWS=0\n");
+				fwrite(log_line, sizeof(char), strlen(log_line), sendlog);
 			 	nbytes = timeout_recvfrom(sd, &tmpack, sizeof(ACK), (struct sockaddr*) &remoteServAddr);
 				if (nbytes) 
 				{
 
 					// s/r/rs seq [freeslot] LAR LFS time
-					strcpy(log_line, "Receive ");
-					sprintf(tmpstr, "%d ", tmpack.seq);
+					strcpy(log_line, "Receive\t");
+					sprintf(tmpstr, "%d\t", tmpack.seq);
 					strcat(log_line, tmpstr);
-					sprintf(tmpstr, "%d ", tmpack.freeSlots);
+					sprintf(tmpstr, "%d\t", tmpack.freeSlots);
 					strcat(log_line, tmpstr);
-					sprintf(tmpstr, "%d ", LAR);
+					sprintf(tmpstr, "%d\t", LAR);
 					strcat(log_line, tmpstr);
-					sprintf(tmpstr, "%d ", LFS);
+					sprintf(tmpstr, "%d\t", LFS);
 					strcat(log_line, tmpstr);
 					time(&tmptime);
 					strcat(log_line, ctime(&tmptime));
-					strcat(log_line, "\n");
+					// strcat(log_line, "\n");
 					fwrite(log_line, sizeof(char), strlen(log_line), sendlog);
-
+					printf("%s", log_line);
 					SWS = (tmpack.rws) > 0 ? (tmpack.rws) : 0;
 				}	
-			}	
+			}
+
 		}	
 		fclose(sendfile);	
 	}
